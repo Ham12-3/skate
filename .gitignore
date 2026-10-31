@@ -17,3 +17,5 @@ tools/asset-backups/*.blend1
 *.log
 Thumbs.db
 .DS_Store
+.vercel
+.env*

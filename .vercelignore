@@ -1,0 +1,5 @@
+# Only the game itself is deployed: offline tools, backups and local environments stay out of uploads.
+tools/
+dist/
+node_modules/
+.claude/
