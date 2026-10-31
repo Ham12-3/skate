@@ -420,6 +420,14 @@ export class PlayerController {
     return this.bailed&&this.character.ragdollFocus(this.cameraFocus)?this.cameraFocus:this.root.position;
   }
   get cameraYaw():number{return this.renderYaw;}
+  get verticalVelocity():number{return this.velocity.y;}
+
+  // Start somewhere other than the level spawn (the demo's shots); call after reset().
+  placeAt(position:THREE.Vector3,yaw:number):void{
+    this.position.copy(position);this.previousPosition.copy(position);this.respawnPoint.copy(position);
+    this.yaw=yaw;this.previousYaw=yaw;this.renderYaw=yaw;this.speed=0;this.velocity.set(0,0,0);this.grounded=false;this.safeSpots.length=0;
+    this.updateOrientation(1);this.root.position.copy(position);this.root.quaternion.copy(this.targetQuaternion);
+  }
 
   bail(reason:string):void{
     if(this.bailed||this.invulnerability>0)return;

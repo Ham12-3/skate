@@ -10,6 +10,7 @@ export interface UIHandlers {
   quit:()=>void;
   next:()=>void;
   settings:(settings:SaveData['settings'])=>void;
+  demo:()=>void;
 }
 
 export class UI {
@@ -41,10 +42,10 @@ export class UI {
 
   menu(save:SaveData):void{
     this.clearIntro();this.hud.className='';
-    this.screen.innerHTML=`<section class="menu"><video class="menu-video" autoplay muted loop playsinline poster="/assets/ui/level2_thumb.jpg"><source src="/assets/video/menu_loop.mp4" type="video/mp4"></video><div class="shade"></div><div class="menu-content"><img class="logo" src="/assets/ui/logo.png" alt="Kickflip City"><p class="eyebrow">FIVE SPOTS. ONE CITY. YOUR LINE.</p><div class="menu-buttons"><button data-action="play" class="primary">PLAY <span>↗</span></button><button data-action="levels">LEVEL SELECT</button><button data-action="settings">SETTINGS</button><button data-action="controls">CONTROLS</button><button data-action="trailer" class="outline">▶ WATCH TRAILER</button></div><p class="save-note">${save.unlockedLevels}/5 spots unlocked · Progress saves locally</p></div><div class="menu-tag">SKATE<br>THE<br>WHOLE<br>CITY.</div></section>`;
+    this.screen.innerHTML=`<section class="menu"><video class="menu-video" autoplay muted loop playsinline poster="/assets/ui/level2_thumb.jpg"><source src="/assets/video/menu_loop.mp4" type="video/mp4"></video><div class="shade"></div><div class="menu-content"><img class="logo" src="/assets/ui/logo.png" alt="Kickflip City"><p class="eyebrow">FIVE SPOTS. ONE CITY. YOUR LINE.</p><div class="menu-buttons"><button data-action="play" class="primary">PLAY <span>↗</span></button><button data-action="levels">LEVEL SELECT</button><button data-action="settings">SETTINGS</button><button data-action="controls">CONTROLS</button><button data-action="demo" class="outline">▶ WATCH DEMO</button><button data-action="trailer" class="outline">▶ WATCH TRAILER</button></div><p class="save-note">${save.unlockedLevels}/5 spots unlocked · Progress saves locally</p></div><div class="menu-tag">SKATE<br>THE<br>WHOLE<br>CITY.</div></section>`;
     this.button('play',this.handlers.play);this.button('levels',()=>this.levelSelect(save));
     this.button('settings',()=>this.settings(save,'menu'));this.button('controls',()=>this.controls('menu',save));
-    this.button('trailer',()=>this.trailer());
+    this.button('trailer',()=>this.trailer());this.button('demo',this.handlers.demo);
     void this.screen.querySelector<HTMLVideoElement>('.menu-video')?.play().catch(()=>undefined);
   }
 
@@ -150,6 +151,12 @@ export class UI {
   private trailer():void{
     const container=document.createElement('div');container.className='trailer';container.innerHTML=`<video autoplay controls playsinline><source src="/assets/video/trailer.mp4" type="video/mp4"></video><button aria-label="Close trailer">CLOSE ×</button>`;
     this.root.append(container);const close=():void=>{container.querySelector('video')?.pause();container.remove();};container.querySelector('button')?.addEventListener('click',close);
+  }
+
+  // Self-playing demo: the gameplay HUD minus score and timer, with a caption for the shot and how to leave.
+  demo(level:LevelDefinition,caption:string,index:number,total:number):void{
+    this.gameplay(level);this.hud.classList.add('demo');
+    this.hud.insertAdjacentHTML('beforeend',`<div class="demo-banner"><span>DEMO ${index+1}/${total}</span><strong>0${level.id+1} ${level.name}</strong><em>${caption}</em></div><div class="demo-exit">PRESS ANY KEY OR CLICK TO SKATE</div>`);
   }
 
   update(dt:number,fpsValue:number):void{

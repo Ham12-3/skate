@@ -18,8 +18,9 @@ import { SoundManager } from './audio/SoundManager';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { SlowMotion } from './effects/SlowMotion';
 import { PostProcessing } from './effects/PostProcessing';
+import { DEMO_SHOTS, DemoDirector } from './demo/DemoDirector';
 
-type GameState='loading'|'menu'|'intro'|'playing'|'paused'|'results';
+type GameState='loading'|'menu'|'intro'|'playing'|'paused'|'results'|'demo';
 
 class KickflipCity {
   private readonly scene=new THREE.Scene();
@@ -52,6 +53,7 @@ class KickflipCity {
   private pixelRatio=Math.min(devicePixelRatio,CONFIG.rendering.maxPixelRatio);
   private resolutionTimer=0;
   private readonly fallbackCamera=new THREE.PerspectiveCamera();
+  private demo?:DemoDirector;
 
   constructor(){
     this.renderer.setSize(innerWidth,innerHeight);this.renderer.setPixelRatio(this.pixelRatio);
@@ -64,7 +66,7 @@ class KickflipCity {
       play:()=>void this.startLevel(Math.min(this.save.data.unlockedLevels-1,4)),
       selectLevel:(index)=>void this.startLevel(index),resume:()=>this.resume(),restart:()=>void this.startLevel(this.currentLevel,true),
       quit:()=>this.menu(),next:()=>void this.startLevel(Math.min(4,this.currentLevel+1)),
-      settings:(settings)=>this.applySettings(settings),
+      settings:(settings)=>this.applySettings(settings),demo:()=>void this.startDemo(),
     });
     this.loop=new GameLoop((dt)=>this.fixedUpdate(dt),(alpha,dt)=>this.render(alpha,dt));
     window.addEventListener('resize',()=>{this.renderer.setSize(innerWidth,innerHeight);this.post?.setSize(innerWidth,innerHeight,this.pixelRatio);});
@@ -130,6 +132,45 @@ class KickflipCity {
     if(!this.levels.definition)return;
     this.state='playing';this.input.setEnabled(true);this.ui.gameplay(this.levels.definition);
     this.ui.updateHUD(this.combo.score,this.timeRemaining,this.player.speed);
+  }
+
+  // The game plays itself: a loop of scripted shots across the levels, filmed with the skate-video cameras.
+  // Realistic handling is forced so every script lands the same way; any key or click returns to the menu.
+  private async startDemo():Promise<void>{
+    this.demo=new DemoDirector();applyHandling('realistic');
+    this.input.setScripted(true);this.input.onInterrupt=()=>this.stopDemo();
+    await this.playShot();
+  }
+
+  private async playShot():Promise<void>{
+    const demo=this.demo;if(!demo)return;
+    const shot=demo.next();const definition=LEVELS[shot.level]!;
+    const token=++this.loadToken;this.state='loading';
+    if(this.levels.definition!==definition){
+      this.ui.loading(0,`Demo · ${definition.name}`);
+      await this.levels.load(definition);if(token!==this.loadToken)return;
+      this.applyLighting(definition.lighting);this.prepareMaterials();
+    }
+    this.slowMotion.reset();this.player.reset(definition);this.player.board.setDeck(this.save.data.settings.deck);
+    if(shot.start)this.player.placeAt(new THREE.Vector3(...shot.start.position),shot.start.yaw);
+    this.player.currentGrindables=this.levels.buildResult?.grindables??[];
+    this.player.currentPedestrians=this.levels.buildResult?.pedestrians??[];
+    this.chase.mode=shot.camera;this.post?.setFisheye(shot.camera==='fisheye'?CONFIG.camera.fisheyeStrength:0);
+    this.chase.snap(this.player.position,this.player.yaw);
+    await this.sound.playMusic(definition.musicFile);if(token!==this.loadToken)return;
+    this.state='demo';this.ui.demo(definition,shot.caption,demo.index,DEMO_SHOTS.length);
+  }
+
+  private stopDemo():void{
+    if(!this.demo)return;
+    this.demo=undefined;this.input.onInterrupt=undefined;this.input.setScripted(false);
+    // The click that ended the demo would otherwise land on whichever menu button appears under it.
+    const swallow=(event:Event):void=>{event.stopPropagation();event.preventDefault();};
+    window.addEventListener('click',swallow,{capture:true,once:true});
+    setTimeout(()=>window.removeEventListener('click',swallow,{capture:true}),400);
+    applyHandling(this.save.data.settings.handling);
+    this.chase.mode=this.save.data.settings.cameraMode;this.post?.setFisheye(this.chase.mode==='fisheye'?CONFIG.camera.fisheyeStrength:0);
+    this.menu();
   }
 
   private menu():void{
@@ -233,14 +274,23 @@ class KickflipCity {
         if(this.crossedFinish())this.finish(true);
         else if(this.timeRemaining<=0)this.finish();
       }
+    }else if(this.state==='demo'&&this.demo){
+      const done=this.demo.step(dt,this.player,this.input);
+      this.levels.update(dt);this.physics.step();this.player.root.visible=true;this.player.fixedUpdate(dt);
+      if(this.player.grinds.active)this.particles.sparks(this.player.position);
+      if(done)void this.playShot();
     }else if(this.state==='paused'&&this.input.wasPressed('pause'))this.resume();
     this.input.endStep();
   }
 
   private render(alpha:number,frameDelta:number):void{
-    this.loop.timeScale=this.state==='playing'?this.slowMotion.update(frameDelta):1;
+    const riding=this.state==='playing'||this.state==='demo';
+    this.loop.timeScale=riding?this.slowMotion.update(frameDelta):1;
     if(this.player&&this.chase){
-      if(this.state==='playing'){
+      if(this.state==='demo'){
+        this.player.render(alpha);this.chase.update(frameDelta,this.player.cameraPosition,this.player.cameraYaw,this.player.speed);
+        this.csm?.updateFrustums();this.csm?.update();
+      }else if(this.state==='playing'){
         this.player.render(alpha);this.chase.update(frameDelta,this.player.cameraPosition,this.player.cameraYaw,this.player.speed);
         this.csm?.updateFrustums();this.csm?.update();
         this.ui.updateHUD(this.combo.score,this.timeRemaining,this.player.speed);
@@ -252,7 +302,7 @@ class KickflipCity {
     this.particles?.update(frameDelta*(this.loop.timeScale||1));
     const fpsAlpha=1-Math.exp(-frameDelta/CONFIG.ui.fpsSampleDuration);
     this.fps=THREE.MathUtils.lerp(this.fps,frameDelta>0?1/frameDelta:60,fpsAlpha);this.ui.update(frameDelta,this.fps);
-    if(this.state==='playing')this.updateAdaptiveResolution(frameDelta);
+    if(riding)this.updateAdaptiveResolution(frameDelta);
     if(this.post&&this.chase)this.post.render(frameDelta);
     else this.renderer.render(this.scene,this.fallbackCamera);
   }
