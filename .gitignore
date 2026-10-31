@@ -1,0 +1,19 @@
+# Dependencies and build output (recreate with `npm install` / `npm run build`)
+node_modules/
+dist/
+
+# Mocap tool's Python environment (recreate with the steps in tools/mocap/README.md)
+tools/mocap/.venv/
+__pycache__/
+
+# Blender source backups of the props are 200-285 MB each, over GitHub's 100 MB file limit.
+# The game uses the exported .glb models; skater.blend stays because the mocap converter needs it.
+tools/asset-backups/*.blend
+tools/asset-backups/*.blend1
+!tools/asset-backups/skater.blend
+
+# Local editor/OS clutter
+.claude/settings.local.json
+*.log
+Thumbs.db
+.DS_Store
